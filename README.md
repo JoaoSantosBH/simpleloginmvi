@@ -1,5 +1,7 @@
 # simpleloginmvi
-["home"](/img/login.png)
+
+![home](/img/login.png)
+
 This example demonstrates a complete MVI implementation for a login screen with the following key components:
 
 ## MVI Architecture Components:
