@@ -1,6 +1,7 @@
 package com.jomar.simpleloginmvi.features.login.domain.usecase
 
 import com.jomar.simpleloginmvi.features.login.data.AuthException
+import com.jomar.simpleloginmvi.features.login.data.Result
 import com.jomar.simpleloginmvi.features.login.data.model.AuthResponse
 import com.jomar.simpleloginmvi.features.login.data.model.LoginRequest
 import com.jomar.simpleloginmvi.features.login.domain.repository.AuthRepository

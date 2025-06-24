@@ -1,6 +1,7 @@
 package com.jomar.simpleloginmvi.features.login.domain.usecase
 
 import com.jomar.simpleloginmvi.features.login.data.AuthException
+import com.jomar.simpleloginmvi.features.login.data.Result
 import com.jomar.simpleloginmvi.features.login.data.model.AuthResponse
 import com.jomar.simpleloginmvi.features.login.data.model.RegisterRequest
 import com.jomar.simpleloginmvi.features.login.domain.repository.AuthRepository
@@ -18,7 +19,7 @@ class RegisterUseCase(
         // Validate input
         val validationError = validateRegisterInput(name, email, password, confirmPassword)
         if (validationError != null) {
-            return Result.failure(validationError)
+            return Result.Error(validationError)
         }
 
         // Create request
