@@ -1,51 +1,4 @@
-import android.app.Application
-import android.content.Context
-import android.content.SharedPreferences
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.myapp.core.data.repository.*
-import com.myapp.core.domain.usecase.*
-import com.myapp.core.network.*
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.android.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
-import org.koin.android.ext.koin.androidContext
-import org.koin.androidx.compose.koinViewModel
-import org.koin.androidx.viewmodel.dsl.viewModel
-import org.koin.core.context.startKoin
-import org.koin.dsl.module
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.POST
-import java.util.concurrent.TimeUnit
+
 
 // ===========================================
 // ESTRUTURA DO PROJETO
@@ -65,59 +18,6 @@ MyApp/
 │   └── home/
 └── buildSrc/
 */
-
-// ===========================================
-// 1. CONFIGURAÇÃO GRADLE (Project Level)
-// ===========================================
-
-// build.gradle (Project)
-
-// ===========================================
-// 2. APP MODULE - build.gradle
-// ===========================================
-
-
-
-class MyApplication : Application() {
-    override fun onCreate() {
-        super.onCreate()
-
-        startKoin {
-            androidContext(this@MyApplication)
-            modules(
-                networkModule,
-                dataModule,
-                domainModule,
-                loginModule,
-                homeModule
-            )
-        }
-    }
-}
-
-// ===========================================
-// 4. MAIN ACTIVITY
-// ===========================================
-
-// app/src/main/java/com/myapp/MainActivity.kt
-
-
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            MyAppTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    AppNavigation()
-                }
-            }
-        }
-    }
-}
-
 // ===========================================
 // 5. CORE - NETWORK MODULE
 // ===========================================
@@ -164,18 +64,7 @@ data class LoginRequest(
 
 // core/network/src/main/java/com/myapp/core/network/KtorApiService.kt
 
-class KtorApiService(private val client: HttpClient) : ApiService {
-    override suspend fun login(email: String, password: String): LoginResponse {
-        return client.post("auth/login") {
-            contentType(ContentType.Application.Json)
-            setBody(LoginRequest(email, password))
-        }.body()
-    }
 
-    override suspend fun getUserData(): UserDataResponse {
-        return client.get("user/me").body()
-    }
-}
 
 // core/network/src/main/java/com/myapp/core/network/di/NetworkModule.kt
 
@@ -293,27 +182,10 @@ val dataModule = module {
 // core/domain/src/main/java/com/myapp/core/domain/usecase/LoginUseCase.kt
 
 
-class LoginUseCase(private val userRepository: UserRepository) {
-    suspend operator fun invoke(email: String, password: String): Result<UserData> {
-        if (email.isBlank() || password.isBlank()) {
-            return Result.failure(IllegalArgumentException("Email and password cannot be empty"))
-        }
 
-        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-            return Result.failure(IllegalArgumentException("Invalid email format"))
-        }
-
-        return userRepository.login(email, password)
-    }
-}
 
 // core/domain/src/main/java/com/myapp/core/domain/usecase/GetUserDataUseCase.kt
 
-class GetUserDataUseCase(private val userRepository: UserRepository) {
-    suspend operator fun invoke(): Result<UserData> {
-        return userRepository.getUserData()
-    }
-}
 
 // core/domain/src/main/java/com/myapp/core/domain/di/DomainModule.kt
 
@@ -373,15 +245,6 @@ fun CommonTextField(
 
 // core/ui/src/main/java/com/myapp/core/ui/theme/Theme.kt
 
-private val LightColorScheme = lightColorScheme()
-
-@Composable
-fun MyAppTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = LightColorScheme,
-        content = content
-    )
-}
 
 // ===========================================
 // 9. CORE - NAVIGATION MODULE
