@@ -1,9 +1,1736 @@
-package com.jomar.simpleloginmvi.features.login.mvi
+import android.app.Application
+import android.content.Context
+import android.content.SharedPreferences
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.myapp.core.data.repository.*
+import com.myapp.core.domain.usecase.*
+import com.myapp.core.network.*
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.engine.android.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import org.koin.android.ext.koin.androidContext
+import org.koin.androidx.compose.koinViewModel
+import org.koin.androidx.viewmodel.dsl.viewModel
+import org.koin.core.context.startKoin
+import org.koin.dsl.module
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.POST
+import java.util.concurrent.TimeUnit
 
-interface TokenManager {
+// ===========================================
+// ESTRUTURA DO PROJETO
+// ===========================================
+
+/*
+MyApp/
+├── app/
+├── core/
+│   ├── data/
+│   ├── domain/
+│   ├── network/
+│   ├── ui/
+│   └── navigation/
+├── features/
+│   ├── login/
+│   └── home/
+└── buildSrc/
+*/
+
+// ===========================================
+// 1. CONFIGURAÇÃO GRADLE (Project Level)
+// ===========================================
+
+// build.gradle (Project)
+buildscript {
+    ext {
+        kotlin_version = '1.9.0'
+        compose_version = '1.5.0'
+        koin_version = '3.4.0'
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+// ===========================================
+// 2. APP MODULE - build.gradle
+// ===========================================
+
+// app/build.gradle
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'kotlin-kapt'
+}
+
+android {
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.myapp"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion . VERSION_1_8
+                targetCompatibility JavaVersion . VERSION_1_8
+    }
+
+    buildFeatures {
+        compose true
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion compose_version
+    }
+}
+
+dependencies {
+    implementation project (':core:ui')
+    implementation project (':core:navigation')
+    implementation project (':features:login')
+    implementation project (':features:home')
+
+    // Koin
+    implementation "io.insert-koin:koin-android:$koin_version"
+    implementation "io.insert-koin:koin-androidx-compose:$koin_version"
+
+    // Compose
+    implementation "androidx.compose.ui:ui:$compose_version"
+    implementation "androidx.compose.ui:ui-tooling-preview:$compose_version"
+    implementation "androidx.activity:activity-compose:1.7.2"
+}
+
+// ===========================================
+// 3. APPLICATION CLASS
+// ===========================================
+
+// app/src/main/java/com/myapp/MyApplication.kt
+package com.myapp
+
+import android.app.Application
+import com.myapp.core.data.di.dataModule
+import com.myapp.core.domain.di.domainModule
+import com.myapp.core.network.di.networkModule
+import com.myapp.features.home.di.homeModule
+import com.myapp.features.login.di.loginModule
+import org.koin.android.ext.koin.androidContext
+import org.koin.core.context.startKoin
+
+class MyApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+
+        startKoin {
+            androidContext(this@MyApplication)
+            modules(
+                networkModule,
+                dataModule,
+                domainModule,
+                loginModule,
+                homeModule
+            )
+        }
+    }
+}
+
+// ===========================================
+// 4. MAIN ACTIVITY
+// ===========================================
+
+// app/src/main/java/com/myapp/MainActivity.kt
+package com.myapp
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import com.myapp.core.navigation.AppNavigation
+import com.myapp.core.ui.theme.MyAppTheme
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MyAppTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    AppNavigation()
+                }
+            }
+        }
+    }
+}
+
+// ===========================================
+// 5. CORE - NETWORK MODULE
+// ===========================================
+
+// core/network/build.gradle
+dependencies {
+    implementation "com.squareup.retrofit2:retrofit:2.9.0"
+    implementation "com.squareup.retrofit2:converter-gson:2.9.0"
+    implementation "io.ktor:ktor-client-android:2.3.0"
+    implementation "io.ktor:ktor-client-content-negotiation:2.3.0"
+    implementation "io.ktor:ktor-serialization-kotlinx-json:2.3.0"
+    implementation "com.squareup.okhttp3:logging-interceptor:4.11.0"
+    implementation "io.insert-koin:koin-android:$koin_version"
+}
+
+// core/network/src/main/java/com/myapp/core/network/ApiService.kt
+package com.myapp.core.network
+
+interface ApiService {
+    suspend fun login(email: String, password: String): LoginResponse
+    suspend fun getUserData(): UserDataResponse
+}
+
+data class LoginResponse(
+    val token: String,
+    val user: UserData
+)
+
+data class UserDataResponse(
+    val user: UserData
+)
+
+data class UserData(
+    val id: String,
+    val name: String,
+    val email: String
+)
+
+// core/network/src/main/java/com/myapp/core/network/RetrofitApiService.kt
+package com.myapp.core.network
+
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.POST
+
+interface RetrofitApiService {
+    @POST("auth/login")
+    suspend fun login(@Body request: LoginRequest): LoginResponse
+
+    @GET("user/me")
+    suspend fun getUserData(): UserDataResponse
+}
+
+data class LoginRequest(
+    val email: String,
+    val password: String
+)
+
+// core/network/src/main/java/com/myapp/core/network/KtorApiService.kt
+package com.myapp.core.network
+
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.request.*
+import io.ktor.http.*
+
+class KtorApiService(private val client: HttpClient) : ApiService {
+    override suspend fun login(email: String, password: String): LoginResponse {
+        return client.post("auth/login") {
+            contentType(ContentType.Application.Json)
+            setBody(LoginRequest(email, password))
+        }.body()
+    }
+
+    override suspend fun getUserData(): UserDataResponse {
+        return client.get("user/me").body()
+    }
+}
+
+// core/network/src/main/java/com/myapp/core/network/di/NetworkModule.kt
+package com.myapp.core.network.di
+
+import com.myapp.core.network.*
+import io.ktor.client.*
+import io.ktor.client.engine.android.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.serialization.kotlinx.json.*
+import kotlinx.serialization.json.Json
+import org.koin.dsl.module
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+
+val networkModule = module {
+
+    // Retrofit
+    single {
+        Retrofit.Builder()
+            .baseUrl("https://api.myapp.com/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    single { get<Retrofit>().create(RetrofitApiService::class.java) }
+
+    // Ktor
+    single {
+        HttpClient(Android) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                })
+            }
+        }
+    }
+
+    single<ApiService> { KtorApiService(get()) }
+}
+
+// ===========================================
+// 6. CORE - DATA MODULE
+// ===========================================
+
+// core/data/src/main/java/com/myapp/core/data/repository/UserRepository.kt
+package com.myapp.core.data .repository
+
+import com.myapp.core.network.ApiService
+import com.myapp.core.network.UserData
+
+interface UserRepository {
+    suspend fun login(email: String, password: String): Result<UserData>
+    suspend fun getUserData(): Result<UserData>
+    suspend fun saveUserToken(token: String)
+    suspend fun getUserToken(): String?
+}
+
+class UserRepositoryImpl(
+    private val apiService: ApiService,
+    private val localDataSource: LocalDataSource
+) : UserRepository {
+
+    override suspend fun login(email: String, password: String): Result<UserData> {
+        return try {
+            val response = apiService.login(email, password)
+            saveUserToken(response.token)
+            Result.success(response.user)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getUserData(): Result<UserData> {
+        return try {
+            val response = apiService.getUserData()
+            Result.success(response.user)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun saveUserToken(token: String) {
+        localDataSource.saveToken(token)
+    }
+
+    override suspend fun getUserToken(): String? {
+        return localDataSource.getToken()
+    }
+}
+
+// core/data/src/main/java/com/myapp/core/data/local/LocalDataSource.kt
+package com.myapp.core.data .repository
+
+import android.content.SharedPreferences
+
+interface LocalDataSource {
     suspend fun saveToken(token: String)
     suspend fun getToken(): String?
-    suspend fun clearToken()
-    suspend fun saveRefreshToken(token: String)
-    suspend fun getRefreshToken(): String?
 }
+
+class LocalDataSourceImpl(
+    private val sharedPreferences: SharedPreferences
+) : LocalDataSource {
+
+    override suspend fun saveToken(token: String) {
+        sharedPreferences.edit().putString("user_token", token).apply()
+    }
+
+    override suspend fun getToken(): String? {
+        return sharedPreferences.getString("user_token", null)
+    }
+}
+
+// core/data/src/main/java/com/myapp/core/data/di/DataModule.kt
+package com.myapp.core.data .di
+
+import android.content.Context
+import com.myapp.core.data.repository.*
+import org.koin.android.ext.koin.androidContext
+import org.koin.dsl.module
+
+val dataModule = module {
+    single {
+        androidContext().getSharedPreferences("myapp_prefs", Context.MODE_PRIVATE)
+    }
+
+    single<LocalDataSource> { LocalDataSourceImpl(get()) }
+    single<UserRepository> { UserRepositoryImpl(get(), get()) }
+}
+
+// ===========================================
+// 7. CORE - DOMAIN MODULE
+// ===========================================
+
+// core/domain/src/main/java/com/myapp/core/domain/usecase/LoginUseCase.kt
+package com.myapp.core.domain.usecase
+
+import com.myapp.core.data.repository.UserRepository
+import com.myapp.core.network.UserData
+
+class LoginUseCase(private val userRepository: UserRepository) {
+    suspend operator fun invoke(email: String, password: String): Result<UserData> {
+        if (email.isBlank() || password.isBlank()) {
+            return Result.failure(IllegalArgumentException("Email and password cannot be empty"))
+        }
+
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            return Result.failure(IllegalArgumentException("Invalid email format"))
+        }
+
+        return userRepository.login(email, password)
+    }
+}
+
+// core/domain/src/main/java/com/myapp/core/domain/usecase/GetUserDataUseCase.kt
+package com.myapp.core.domain.usecase
+
+import com.myapp.core.data.repository.UserRepository
+import com.myapp.core.network.UserData
+
+class GetUserDataUseCase(private val userRepository: UserRepository) {
+    suspend operator fun invoke(): Result<UserData> {
+        return userRepository.getUserData()
+    }
+}
+
+// core/domain/src/main/java/com/myapp/core/domain/di/DomainModule.kt
+package com.myapp.core.domain.di
+
+import com.myapp.core.domain.usecase.*
+import org.koin.dsl.module
+
+val domainModule = module {
+    factory { LoginUseCase(get()) }
+    factory { GetUserDataUseCase(get()) }
+}
+
+// ===========================================
+// 8. CORE - UI MODULE
+// ===========================================
+
+// core/ui/src/main/java/com/myapp/core/ui/components/CommonButton.kt
+package com.myapp.core.ui.components
+
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun CommonButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        enabled = enabled
+    ) {
+        Text(text = text)
+    }
+}
+
+// core/ui/src/main/java/com/myapp/core/ui/components/CommonTextField.kt
+package com.myapp.core.ui.components
+
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+
+@Composable
+fun CommonTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    isPassword: Boolean = false,
+    enabled: Boolean = true
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        modifier = modifier.fillMaxWidth(),
+        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
+        enabled = enabled,
+        singleLine = true
+    )
+}
+
+// core/ui/src/main/java/com/myapp/core/ui/theme/Theme.kt
+package com.myapp.core.ui.theme
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+
+private val LightColorScheme = lightColorScheme()
+
+@Composable
+fun MyAppTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = LightColorScheme,
+        content = content
+    )
+}
+
+// ===========================================
+// 9. CORE - NAVIGATION MODULE
+// ===========================================
+
+// core/navigation/src/main/java/com/myapp/core/navigation/AppNavigation.kt
+package com.myapp.core.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.myapp.features.home.presentation.HomeScreen
+import com.myapp.features.login.presentation.LoginScreen
+
+@Composable
+fun AppNavigation() {
+    val navController = rememberNavController()
+
+    NavHost(
+        navController = navController,
+        startDestination = Routes.LOGIN
+    ) {
+        composable(Routes.LOGIN) {
+            LoginScreen(
+                onNavigateToHome = {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Routes.HOME) {
+            HomeScreen(
+                onNavigateToLogin = {
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.HOME) { inclusive = true }
+                    }
+                }
+            )
+        }
+    }
+}
+
+// core/navigation/src/main/java/com/myapp/core/navigation/Routes.kt
+package com.myapp.core.navigation
+
+object Routes {
+    const val LOGIN = "login"
+    const val HOME = "home"
+}
+
+// ===========================================
+// 10. FEATURE - LOGIN MODULE
+// ===========================================
+
+// features/login/src/main/java/com/myapp/features/login/presentation/LoginStateUI.kt
+package com.myapp.features.login.presentation
+
+import com.myapp.core.network.UserData
+
+data class LoginStateUI(
+    val email: String = "",
+    val password: String = "",
+    val isLoading: Boolean = false,
+    val user: UserData? = null,
+    val errorMessage: String? = null
+)
+
+sealed class LoginIntent {
+    data class UpdateEmail(val email: String) : LoginIntent()
+    data class UpdatePassword(val password: String) : LoginIntent()
+    object Login : LoginIntent()
+    object ClearError : LoginIntent()
+}
+
+sealed class LoginEffect {
+    object NavigateToHome : LoginEffect()
+    data class ShowError(val message: String) : LoginEffect()
+}
+
+// features/login/src/main/java/com/myapp/features/login/presentation/LoginViewModel.kt
+package com.myapp.features.login.presentation
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.myapp.core.domain.usecase.LoginUseCase
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+
+class LoginViewModel(
+    private val loginUseCase: LoginUseCase
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(LoginStateUI())
+    val state: StateFlow<LoginStateUI> = _state.asStateFlow()
+
+    private val _effects = Channel<LoginEffect>()
+    val effects = _effects.receiveAsFlow()
+
+    fun handleIntent(intent: LoginIntent) {
+        when (intent) {
+            is LoginIntent.UpdateEmail -> {
+                _state.value = _state.value.copy(email = intent.email, errorMessage = null)
+            }
+
+            is LoginIntent.UpdatePassword -> {
+                _state.value = _state.value.copy(password = intent.password, errorMessage = null)
+            }
+
+            is LoginIntent.Login -> {
+                performLogin()
+            }
+
+            is LoginIntent.ClearError -> {
+                _state.value = _state.value.copy(errorMessage = null)
+            }
+        }
+    }
+
+    private fun performLogin() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, errorMessage = null)
+
+            val result = loginUseCase(_state.value.email, _state.value.password)
+
+            result.fold(
+                onSuccess = { user ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        user = user
+                    )
+                    _effects.send(LoginEffect.NavigateToHome)
+                },
+                onFailure = { exception ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        errorMessage = exception.message ?: "Login failed"
+                    )
+                    _effects.send(LoginEffect.ShowError(exception.message ?: "Login failed"))
+                }
+            )
+        }
+    }
+}
+
+// features/login/src/main/java/com/myapp/features/login/presentation/LoginScreen.kt
+package com.myapp.features.login.presentation
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.myapp.core.ui.components.CommonButton
+import com.myapp.core.ui.components.CommonTextField
+import org.koin.androidx.compose.koinViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LoginScreen(
+    onNavigateToHome: () -> Unit,
+    viewModel: LoginViewModel = koinViewModel()
+) {
+    val state by viewModel.state.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                is LoginEffect.NavigateToHome -> onNavigateToHome()
+                is LoginEffect.ShowError -> {
+                    // Handle error display if needed
+                }
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Login",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(bottom = 32.dp)
+        )
+
+        CommonTextField(
+            value = state.email,
+            onValueChange = { viewModel.handleIntent(LoginIntent.UpdateEmail(it)) },
+            label = "Email",
+            modifier = Modifier.padding(bottom = 16.dp),
+            enabled = !state.isLoading
+        )
+
+        CommonTextField(
+            value = state.password,
+            onValueChange = { viewModel.handleIntent(LoginIntent.UpdatePassword(it)) },
+            label = "Password",
+            isPassword = true,
+            modifier = Modifier.padding(bottom = 24.dp),
+            enabled = !state.isLoading
+        )
+
+        state.errorMessage?.let { error ->
+            Text(
+                text = error,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
+
+        CommonButton(
+            text = if (state.isLoading) "Loading..." else "Login",
+            onClick = { viewModel.handleIntent(LoginIntent.Login) },
+            enabled = !state.isLoading && state.email.isNotBlank() && state.password.isNotBlank()
+        )
+    }
+}
+
+// features/login/src/main/java/com/myapp/features/login/di/LoginModule.kt
+package com.myapp.features.login.di
+
+import com.myapp.features.login.presentation.LoginViewModel
+import org.koin.androidx.viewmodel.dsl.viewModel
+import org.koin.dsl.module
+
+val loginModule = module {
+    viewModel { LoginViewModel(get()) }
+}
+
+// ===========================================
+// 11. FEATURE - HOME MODULE
+// ===========================================
+
+// features/home/src/main/java/com/myapp/features/home/presentation/HomeStateUI.kt
+package com.myapp.features.home.presentation
+
+import com.myapp.core.network.UserData
+
+data class HomeStateUI(
+    val user: UserData? = null,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null
+)
+
+sealed class HomeIntent {
+    object LoadUserData : HomeIntent()
+    object Logout : HomeIntent()
+    object ClearError : HomeIntent()
+}
+
+sealed class HomeEffect {
+    object NavigateToLogin : HomeEffect()
+    data class ShowError(val message: String) : HomeEffect()
+}
+
+// features/home/src/main/java/com/myapp/features/home/presentation/HomeViewModel.kt
+package com.myapp.features.home.presentation
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.myapp.core.domain.usecase.GetUserDataUseCase
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+
+class HomeViewModel(
+    private val getUserDataUseCase: GetUserDataUseCase
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(HomeStateUI())
+    val state: StateFlow<HomeStateUI> = _state.asStateFlow()
+
+    private val _effects = Channel<HomeEffect>()
+    val effects = _effects.receiveAsFlow()
+
+    init {
+        handleIntent(HomeIntent.LoadUserData)
+    }
+
+    fun handleIntent(intent: HomeIntent) {
+        when (intent) {
+            is HomeIntent.LoadUserData -> {
+                loadUserData()
+            }
+
+            is HomeIntent.Logout -> {
+                performLogout()
+            }
+
+            is HomeIntent.ClearError -> {
+                _state.value = _state.value.copy(errorMessage = null)
+            }
+        }
+    }
+
+    private fun loadUserData() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, errorMessage = null)
+
+            val result = getUserDataUseCase()
+
+            result.fold(
+                onSuccess = { user ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        user = user
+                    )
+                },
+                onFailure = { exception ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        errorMessage = exception.message ?: "Failed to load user data"
+                    )
+                }
+            )
+        }
+    }
+
+    private fun performLogout() {
+        viewModelScope.launch {
+            _effects.send(HomeEffect.NavigateToLogin)
+        }
+    }
+}
+
+// features/home/src/main/java/com/myapp/features/home/presentation/HomeScreen.kt
+package com.myapp.features.home.presentation
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.myapp.core.ui.components.CommonButton
+import org.koin.androidx.compose.koinViewModel
+
+@Composable
+fun HomeScreen(
+    onNavigateToLogin: () -> Unit,
+    viewModel: HomeViewModel = koinViewModel()
+) {
+    val state by viewModel.state.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                is HomeEffect.NavigateToLogin -> onNavigateToLogin()
+                is HomeEffect.ShowError -> {
+                    // Handle error display if needed
+                }
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Home",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(bottom = 32.dp)
+        )
+
+        if (state.isLoading) {
+            CircularProgressIndicator(modifier = Modifier.padding(bottom = 16.dp))
+        }
+
+        state.user?.let { user ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Welcome, ${user.name}!",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Text(
+                        text = "Email: ${user.email}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
+        state.errorMessage?.let { error ->
+            Text(
+                text = error,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
+
+        CommonButton(
+            text = "Logout",
+            onClick = { viewModel.handleIntent(HomeIntent.Logout) }
+        )
+    }
+}
+
+// features/home/src/main/java/com/myapp/features/home/di/HomeModule.kt
+package com.myapp.features.home.di
+
+import com.myapp.features.home.presentation.HomeViewModel
+import org.koin.androidx.viewmodel.dsl.viewModel
+import org.koin.dsl.module
+
+val homeModule = module {
+    viewModel { HomeViewModel(get()) }
+}
+
+// ===========================================
+// 12. MANIFESTO ANDROID
+// ===========================================
+
+// app/src/main/AndroidManifest.xml
+/*
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <uses-permission android:name="android.permission.INTERNET" />
+    
+    <application
+        android:name=".MyApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.MyApp">
+        
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.MyApp">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        
+    </application>
+</manifest>
+*/
+
+// ===========================================
+// 13. CONFIGURAÇÕES GRADLE DOS MÓDULOS
+// ===========================================
+
+// settings.gradle
+/*
+include ':app'
+include ':core:data'
+include ':core:domain'
+include ':core:network'
+include ':core:ui'
+include ':core:navigation'
+include ':features:login'
+include ':features:home'
+*/
+
+// ===========================================
+// 14. BUILD.GRADLE DOS MÓDULOS CORE
+// ===========================================
+
+// core/data/build.gradle
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    compileSdk 34
+    defaultConfig {
+        minSdk 24
+        targetSdk 34
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion . VERSION_1_8
+                targetCompatibility JavaVersion . VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation project (':core:network')
+    implementation "io.insert-koin:koin-android:$koin_version"
+    implementation "androidx.core:core-ktx:1.10.1"
+}
+
+// core/domain/build.gradle
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    compileSdk 34
+    defaultConfig {
+        minSdk 24
+        targetSdk 34
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion . VERSION_1_8
+                targetCompatibility JavaVersion . VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation project (':core:data')
+    implementation project (':core:network')
+    implementation "io.insert-koin:koin-android:$koin_version"
+    implementation "androidx.core:core-ktx:1.10.1"
+}
+
+// core/ui/build.gradle
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    compileSdk 34
+    defaultConfig {
+        minSdk 24
+        targetSdk 34
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion . VERSION_1_8
+                targetCompatibility JavaVersion . VERSION_1_8
+    }
+    buildFeatures {
+        compose true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion compose_version
+    }
+}
+
+dependencies {
+    implementation "androidx.compose.ui:ui:$compose_version"
+    implementation "androidx.compose.ui:ui-tooling-preview:$compose_version"
+    implementation "androidx.compose.material3:material3:1.1.0"
+    implementation "androidx.core:core-ktx:1.10.1"
+}
+
+// core/navigation/build.gradle
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    compileSdk 34
+    defaultConfig {
+        minSdk 24
+        targetSdk 34
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion . VERSION_1_8
+                targetCompatibility JavaVersion . VERSION_1_8
+    }
+    buildFeatures {
+        compose true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion compose_version
+    }
+}
+
+dependencies {
+    implementation project (':features:login')
+    implementation project (':features:home')
+    implementation "androidx.navigation:navigation-compose:2.6.0"
+    implementation "androidx.compose.ui:ui:$compose_version"
+    implementation "androidx.core:core-ktx:1.10.1"
+}
+
+// ===========================================
+// 15. BUILD.GRADLE DOS MÓDULOS FEATURES
+// ===========================================
+
+// features/login/build.gradle
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    compileSdk 34
+    defaultConfig {
+        minSdk 24
+        targetSdk 34
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion . VERSION_1_8
+                targetCompatibility JavaVersion . VERSION_1_8
+    }
+    buildFeatures {
+        compose true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion compose_version
+    }
+}
+
+dependencies {
+    implementation project (':core:ui')
+    implementation project (':core:domain')
+    implementation project (':core:network')
+
+    implementation "androidx.compose.ui:ui:$compose_version"
+    implementation "androidx.compose.ui:ui-tooling-preview:$compose_version"
+    implementation "androidx.compose.material3:material3:1.1.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1"
+    implementation "io.insert-koin:koin-android:$koin_version"
+    implementation "io.insert-koin:koin-androidx-compose:$koin_version"
+    implementation "androidx.core:core-ktx:1.10.1"
+}
+
+// features/home/build.gradle
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    compileSdk 34
+    defaultConfig {
+        minSdk 24
+        targetSdk 34
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion . VERSION_1_8
+                targetCompatibility JavaVersion . VERSION_1_8
+    }
+    buildFeatures {
+        compose true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion compose_version
+    }
+}
+
+dependencies {
+    implementation project (':core:ui')
+    implementation project (':core:domain')
+    implementation project (':core:network')
+
+    implementation "androidx.compose.ui:ui:$compose_version"
+    implementation "androidx.compose.ui:ui-tooling-preview:$compose_version"
+    implementation "androidx.compose.material3:material3:1.1.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1"
+    implementation "io.insert-koin:koin-android:$koin_version"
+    implementation "io.insert-koin:koin-androidx-compose:$koin_version"
+    implementation "androidx.core:core-ktx:1.10.1"
+}
+
+// ===========================================
+// 16. COMPONENTES ADICIONAIS DE UI
+// ===========================================
+
+// core/ui/src/main/java/com/myapp/core/ui/components/LoadingIndicator.kt
+package com.myapp.core.ui.components
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun LoadingIndicator(
+    message: String = "Loading...",
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+// core/ui/src/main/java/com/myapp/core/ui/components/ErrorMessage.kt
+package com.myapp.core.ui.components
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun ErrorMessage(
+    message: String,
+    onRetry: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.padding(bottom = if (onRetry != null) 16.dp else 0.dp)
+            )
+
+            onRetry?.let { retry ->
+                Button(
+                    onClick = retry,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Retry")
+                }
+            }
+        }
+    }
+}
+
+// ===========================================
+// 17. MELHORIAS NO NETWORK MODULE
+// ===========================================
+
+// core/network/src/main/java/com/myapp/core/network/NetworkResult.kt
+package com.myapp.core.network
+
+sealed class NetworkResult<T> {
+    data class Success<T>(val data: T) : NetworkResult<T>()
+    data class Error<T>(val exception: Throwable) : NetworkResult<T>()
+    data class Loading<T>(val isLoading: Boolean = true) : NetworkResult<T>()
+}
+
+// core/network/src/main/java/com/myapp/core/network/ApiClient.kt
+package com.myapp.core.network
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+abstract class ApiClient {
+    protected suspend fun <T> safeApiCall(
+        apiCall: suspend () -> T
+    ): NetworkResult<T> {
+        return withContext(Dispatchers.IO) {
+            try {
+                NetworkResult.Success(apiCall())
+            } catch (exception: Exception) {
+                NetworkResult.Error(exception)
+            }
+        }
+    }
+}
+
+// core/network/src/main/java/com/myapp/core/network/RetrofitApiClient.kt
+package com.myapp.core.network
+
+class RetrofitApiClient(
+    private val retrofitApiService: RetrofitApiService
+) : ApiClient(), ApiService {
+
+    override suspend fun login(email: String, password: String): LoginResponse {
+        return when (val result = safeApiCall {
+            retrofitApiService.login(LoginRequest(email, password))
+        }) {
+            is NetworkResult.Success -> result.data
+            is NetworkResult.Error -> throw result.exception
+            is NetworkResult.Loading -> throw Exception("Loading state not expected")
+        }
+    }
+
+    override suspend fun getUserData(): UserDataResponse {
+        return when (val result = safeApiCall {
+            retrofitApiService.getUserData()
+        }) {
+            is NetworkResult.Success -> result.data
+            is NetworkResult.Error -> throw result.exception
+            is NetworkResult.Loading -> throw Exception("Loading state not expected")
+        }
+    }
+}
+
+// ===========================================
+// 18. MELHORIAS NO REPOSITORY
+// ===========================================
+
+// core/data/src/main/java/com/myapp/core/data/repository/UserRepositoryImpl.kt
+package com.myapp.core.data .repository
+
+import com.myapp.core.network.ApiService
+import com.myapp.core.network.UserData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+class UserRepositoryImpl(
+    private val apiService: ApiService,
+    private val localDataSource: LocalDataSource
+) : UserRepository {
+
+    override suspend fun login(email: String, password: String): Result<UserData> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.login(email, password)
+                saveUserToken(response.token)
+                Result.success(response.user)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    override suspend fun getUserData(): Result<UserData> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getUserData()
+                Result.success(response.user)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    override suspend fun saveUserToken(token: String) {
+        withContext(Dispatchers.IO) {
+            localDataSource.saveToken(token)
+        }
+    }
+
+    override suspend fun getUserToken(): String? {
+        return withContext(Dispatchers.IO) {
+            localDataSource.getToken()
+        }
+    }
+
+    suspend fun isUserLoggedIn(): Boolean {
+        return getUserToken() != null
+    }
+}
+
+// ===========================================
+// 19. USE CASES ADICIONAIS
+// ===========================================
+
+// core/domain/src/main/java/com/myapp/core/domain/usecase/LogoutUseCase.kt
+package com.myapp.core.domain.usecase
+
+import com.myapp.core.data.repository.UserRepository
+
+class LogoutUseCase(private val userRepository: UserRepository) {
+    suspend operator fun invoke(): Result<Unit> {
+        return try {
+            userRepository.saveUserToken("")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}
+
+// core/domain/src/main/java/com/myapp/core/domain/usecase/CheckAuthUseCase.kt
+package com.myapp.core.domain.usecase
+
+import com.myapp.core.data.repository.UserRepository
+
+class CheckAuthUseCase(private val userRepository: UserRepository) {
+    suspend operator fun invoke(): Boolean {
+        return userRepository.getUserToken() != null
+    }
+}
+
+// ===========================================
+// 20. ATUALIZAÇÃO DOS MÓDULOS DI
+// ===========================================
+
+// core/network/src/main/java/com/myapp/core/network/di/NetworkModule.kt
+package com.myapp.core.network.di
+
+import com.myapp.core.network.*
+import io.ktor.client.*
+import io.ktor.client.engine.android.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.serialization.kotlinx.json.*
+import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import org.koin.dsl.module
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import java.util.concurrent.TimeUnit
+
+val networkModule = module {
+
+    // OkHttp Client
+    single {
+        OkHttpClient.Builder()
+            .addInterceptor(HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.BODY
+            })
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
+    // Retrofit
+    single {
+        Retrofit.Builder()
+            .baseUrl("https://api.myapp.com/")
+            .client(get<OkHttpClient>())
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    single { get<Retrofit>().create(RetrofitApiService::class.java) }
+
+    // Ktor
+    single {
+        HttpClient(Android) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    isLenient = true
+                })
+            }
+        }
+    }
+
+    // API Services
+    single<ApiService> { RetrofitApiClient(get()) }
+    single { KtorApiService(get()) }
+}
+
+// core/domain/src/main/java/com/myapp/core/domain/di/DomainModule.kt
+package com.myapp.core.domain.di
+
+import com.myapp.core.domain.usecase.*
+import org.koin.dsl.module
+
+val domainModule = module {
+    factory { LoginUseCase(get()) }
+    factory { GetUserDataUseCase(get()) }
+    factory { LogoutUseCase(get()) }
+    factory { CheckAuthUseCase(get()) }
+}
+
+// ===========================================
+// 21. MELHORIAS NAS FEATURES
+// ===========================================
+
+// features/home/src/main/java/com/myapp/features/home/presentation/HomeViewModel.kt
+package com.myapp.features.home.presentation
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.myapp.core.domain.usecase.GetUserDataUseCase
+import com.myapp.core.domain.usecase.LogoutUseCase
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+
+class HomeViewModel(
+    private val getUserDataUseCase: GetUserDataUseCase,
+    private val logoutUseCase: LogoutUseCase
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(HomeStateUI())
+    val state: StateFlow<HomeStateUI> = _state.asStateFlow()
+
+    private val _effects = Channel<HomeEffect>()
+    val effects = _effects.receiveAsFlow()
+
+    init {
+        handleIntent(HomeIntent.LoadUserData)
+    }
+
+    fun handleIntent(intent: HomeIntent) {
+        when (intent) {
+            is HomeIntent.LoadUserData -> {
+                loadUserData()
+            }
+
+            is HomeIntent.Logout -> {
+                performLogout()
+            }
+
+            is HomeIntent.ClearError -> {
+                _state.value = _state.value.copy(errorMessage = null)
+            }
+        }
+    }
+
+    private fun loadUserData() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, errorMessage = null)
+
+            val result = getUserDataUseCase()
+
+            result.fold(
+                onSuccess = { user ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        user = user
+                    )
+                },
+                onFailure = { exception ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        errorMessage = exception.message ?: "Failed to load user data"
+                    )
+                }
+            )
+        }
+    }
+
+    private fun performLogout() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true)
+
+            val result = logoutUseCase()
+
+            result.fold(
+                onSuccess = {
+                    _state.value = _state.value.copy(isLoading = false)
+                    _effects.send(HomeEffect.NavigateToLogin)
+                },
+                onFailure = { exception ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        errorMessage = exception.message ?: "Logout failed"
+                    )
+                }
+            )
+        }
+    }
+}
+
+// features/home/src/main/java/com/myapp/features/home/di/HomeModule.kt
+package com.myapp.features.home.di
+
+import com.myapp.features.home.presentation.HomeViewModel
+import org.koin.androidx.viewmodel.dsl.viewModel
+import org.koin.dsl.module
+
+val homeModule = module {
+    viewModel { HomeViewModel(get(), get()) }
+}
+
+// ===========================================
+// 22. TESTES UNITÁRIOS (EXEMPLO)
+// ===========================================
+
+// features/login/src/test/java/com/myapp/features/login/LoginViewModelTest.kt
+/*
+package com.myapp.features.login
+
+import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import com.myapp.core.domain.usecase.LoginUseCase
+import com.myapp.core.network.UserData
+import com.myapp.features.login.presentation.*
+import io.mockk.coEvery
+import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.*
+import org.junit.After
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+@ExperimentalCoroutinesApi
+class LoginViewModelTest {
+    
+    @get:Rule
+    val instantTaskExecutorRule = InstantTaskExecutorRule()
+    
+    private val testDispatcher = StandardTestDispatcher()
+    private val loginUseCase = mockk<LoginUseCase>()
+    private lateinit var viewModel: LoginViewModel
+    
+    @Before
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+        viewModel = LoginViewModel(loginUseCase)
+    }
+    
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+    
+    @Test
+    fun `when login is successful, should update state with user data`() = runTest {
+        // Given
+        val userData = UserData("1", "Test User", "test@example.com")
+        coEvery { loginUseCase("test@example.com", "password") } returns Result.success(userData)
+        
+        // When
+        viewModel.handleIntent(LoginIntent.UpdateEmail("test@example.com"))
+        viewModel.handleIntent(LoginIntent.UpdatePassword("password"))
+        viewModel.handleIntent(LoginIntent.Login)
+        
+        testDispatcher.scheduler.advanceUntilIdle()
+        
+        // Then
+        val state = viewModel.state.first()
+        assertEquals(userData, state.user)
+        assertFalse(state.isLoading)
+    }
+    
+    @Test
+    fun `when login fails, should update state with error message`() = runTest {
+        // Given
+        val errorMessage = "Invalid credentials"
+        coEvery { loginUseCase("test@example.com", "wrong") } returns Result.failure(Exception(errorMessage))
+        
+        // When
+        viewModel.handleIntent(LoginIntent.UpdateEmail("test@example.com"))
+        viewModel.handleIntent(LoginIntent.UpdatePassword("wrong"))
+        viewModel.handleIntent(LoginIntent.Login)
+        
+        testDispatcher.scheduler.advanceUntilIdle()
+        
+        // Then
+        val state = viewModel.state.first()
+        assertEquals(errorMessage, state.errorMessage)
+        assertFalse(state.isLoading)
+    }
+}
+*/
+
+// ===========================================
+// 23. PROGUARD RULES
+// ===========================================
+
+// app/proguard-rules.pro
+/*
+# Retrofit
+-dontwarn retrofit2.**
+-keep class retrofit2.** { *; }
+-keepattributes Signature
+-keepattributes Exceptions
+
+# Ktor
+-keep class io.ktor.** { *; }
+-keep class kotlinx.coroutines.** { *; }
+
+# Koin
+-keep class org.koin.** { *; }
+-keep class kotlin.Metadata { *; }
+
+# Gson
+-keepattributes Signature
+-keepattributes *Annotation*
+-dontwarn sun.misc.**
+-keep class com.google.gson.** { *; }
+-keep class * implements com.google.gson.TypeAdapterFactory
+-keep class * implements com.google.gson.JsonSerializer
+-keep class * implements com.google.gson.JsonDeserializer
+
+# Model classes
+-keep class com.myapp.core.network.** { *; }
+*/

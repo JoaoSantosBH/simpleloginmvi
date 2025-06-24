@@ -18,12 +18,12 @@ class AuthRepositoryImpl(
 
             if (response.success && response.token != null) {
                 tokenManager.saveToken(response.token)
-                Result.Success(response)
+                Result.success(response)
             } else {
-                Result.Error(AuthException.InvalidCredentials)
+                Result.failure(AuthException.InvalidCredentials)
             }
         } catch (e: Exception) {
-            Result.Error(handleApiException(e))
+            Result.failure(handleApiException(e))
         }
     }
 
@@ -33,12 +33,12 @@ class AuthRepositoryImpl(
 
             if (response.success && response.token != null) {
                 tokenManager.saveToken(response.token)
-                Result.Success(response)
+                Result.success(response)
             } else {
-                Result.Error(AuthException.ServerError(400, response.message))
+                Result.failure(AuthException.ServerError(400, response.message))
             }
         } catch (e: Exception) {
-            Result.Error(handleApiException(e))
+            Result.failure(handleApiException(e))
         }
     }
 
@@ -46,29 +46,29 @@ class AuthRepositoryImpl(
         return try {
             apiService.logout()
             tokenManager.clearToken()
-            Result.Success(Unit)
+            Result.success(Unit)
         } catch (e: Exception) {
             // Clear token even if API call fails
             tokenManager.clearToken()
-            Result.Success(Unit)
+            Result.success(Unit)
         }
     }
 
     override suspend fun refreshToken(): Result<String> {
         return try {
             val currentToken = tokenManager.getRefreshToken()
-                ?: return Result.Error(AuthException.InvalidCredentials)
+                ?: return Result.failure(AuthException.InvalidCredentials)
 
             val response = apiService.refreshToken(currentToken)
 
             if (response.success && response.token != null) {
                 tokenManager.saveToken(response.token)
-                Result.Success(response.token)
+                Result.success(response.token)
             } else {
-                Result.Error(AuthException.InvalidCredentials)
+                Result.failure(AuthException.InvalidCredentials)
             }
         } catch (e: Exception) {
-            Result.Error(handleApiException(e))
+            Result.failure(handleApiException(e))
         }
     }
 
@@ -91,10 +91,4 @@ class AuthRepositoryImpl(
             else -> AuthException.UnknownError
         }
     }
-}
-
-sealed class Result<out T> {
-    data class Success<out T>(val data: T) : Result<T>()
-    data class Error(val exception: Throwable) : Result<Nothing>()
-    data class Loading(val isLoading: Boolean = true) : Result<Nothing>()
 }

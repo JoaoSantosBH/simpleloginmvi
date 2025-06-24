@@ -1,6 +1,5 @@
 package com.jomar.simpleloginmvi.features.login.domain.repository
 
-import com.jomar.simpleloginmvi.features.login.data.Result
 import com.jomar.simpleloginmvi.features.login.data.model.AuthResponse
 import com.jomar.simpleloginmvi.features.login.data.model.LoginRequest
 import com.jomar.simpleloginmvi.features.login.data.model.RegisterRequest
