@@ -57,10 +57,9 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.androidx.material2.icons)
-    implementation(libs.koin.core)
-    implementation(platform(libs.koin.bom))
+
     implementation(project.dependencies.platform(libs.koin.bom))
     implementation(libs.koin.core)
-    implementation("io.insert-koin:koin-android:4.0.3")
+    implementation(libs.koin.android)
 }
 

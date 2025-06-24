@@ -71,84 +71,12 @@ MyApp/
 // ===========================================
 
 // build.gradle (Project)
-buildscript {
-    ext {
-        kotlin_version = '1.9.0'
-        compose_version = '1.5.0'
-        koin_version = '3.4.0'
-    }
-    dependencies {
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    }
-}
 
 // ===========================================
 // 2. APP MODULE - build.gradle
 // ===========================================
 
-// app/build.gradle
-plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
-    id 'kotlin-kapt'
-}
 
-android {
-    compileSdk 34
-
-    defaultConfig {
-        applicationId "com.myapp"
-        minSdk 24
-        targetSdk 34
-        versionCode 1
-        versionName "1.0"
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion . VERSION_1_8
-                targetCompatibility JavaVersion . VERSION_1_8
-    }
-
-    buildFeatures {
-        compose true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion compose_version
-    }
-}
-
-dependencies {
-    implementation project (':core:ui')
-    implementation project (':core:navigation')
-    implementation project (':features:login')
-    implementation project (':features:home')
-
-    // Koin
-    implementation "io.insert-koin:koin-android:$koin_version"
-    implementation "io.insert-koin:koin-androidx-compose:$koin_version"
-
-    // Compose
-    implementation "androidx.compose.ui:ui:$compose_version"
-    implementation "androidx.compose.ui:ui-tooling-preview:$compose_version"
-    implementation "androidx.activity:activity-compose:1.7.2"
-}
-
-// ===========================================
-// 3. APPLICATION CLASS
-// ===========================================
-
-// app/src/main/java/com/myapp/MyApplication.kt
-package com.myapp
-
-import android.app.Application
-import com.myapp.core.data.di.dataModule
-import com.myapp.core.domain.di.domainModule
-import com.myapp.core.network.di.networkModule
-import com.myapp.features.home.di.homeModule
-import com.myapp.features.login.di.loginModule
-import org.koin.android.ext.koin.androidContext
-import org.koin.core.context.startKoin
 
 class MyApplication : Application() {
     override fun onCreate() {
@@ -172,17 +100,7 @@ class MyApplication : Application() {
 // ===========================================
 
 // app/src/main/java/com/myapp/MainActivity.kt
-package com.myapp
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.ui.Modifier
-import com.myapp.core.navigation.AppNavigation
-import com.myapp.core.ui.theme.MyAppTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -205,18 +123,8 @@ class MainActivity : ComponentActivity() {
 // ===========================================
 
 // core/network/build.gradle
-dependencies {
-    implementation "com.squareup.retrofit2:retrofit:2.9.0"
-    implementation "com.squareup.retrofit2:converter-gson:2.9.0"
-    implementation "io.ktor:ktor-client-android:2.3.0"
-    implementation "io.ktor:ktor-client-content-negotiation:2.3.0"
-    implementation "io.ktor:ktor-serialization-kotlinx-json:2.3.0"
-    implementation "com.squareup.okhttp3:logging-interceptor:4.11.0"
-    implementation "io.insert-koin:koin-android:$koin_version"
-}
 
 // core/network/src/main/java/com/myapp/core/network/ApiService.kt
-package com.myapp.core.network
 
 interface ApiService {
     suspend fun login(email: String, password: String): LoginResponse
@@ -239,11 +147,7 @@ data class UserData(
 )
 
 // core/network/src/main/java/com/myapp/core/network/RetrofitApiService.kt
-package com.myapp.core.network
 
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.POST
 
 interface RetrofitApiService {
     @POST("auth/login")
@@ -259,12 +163,6 @@ data class LoginRequest(
 )
 
 // core/network/src/main/java/com/myapp/core/network/KtorApiService.kt
-package com.myapp.core.network
-
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 
 class KtorApiService(private val client: HttpClient) : ApiService {
     override suspend fun login(email: String, password: String): LoginResponse {
@@ -280,17 +178,7 @@ class KtorApiService(private val client: HttpClient) : ApiService {
 }
 
 // core/network/src/main/java/com/myapp/core/network/di/NetworkModule.kt
-package com.myapp.core.network.di
 
-import com.myapp.core.network.*
-import io.ktor.client.*
-import io.ktor.client.engine.android.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.serialization.kotlinx.json.*
-import kotlinx.serialization.json.Json
-import org.koin.dsl.module
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 
 val networkModule = module {
 
@@ -323,10 +211,7 @@ val networkModule = module {
 // ===========================================
 
 // core/data/src/main/java/com/myapp/core/data/repository/UserRepository.kt
-package com.myapp.core.data .repository
 
-import com.myapp.core.network.ApiService
-import com.myapp.core.network.UserData
 
 interface UserRepository {
     suspend fun login(email: String, password: String): Result<UserData>
@@ -369,9 +254,7 @@ class UserRepositoryImpl(
 }
 
 // core/data/src/main/java/com/myapp/core/data/local/LocalDataSource.kt
-package com.myapp.core.data .repository
 
-import android.content.SharedPreferences
 
 interface LocalDataSource {
     suspend fun saveToken(token: String)
@@ -392,12 +275,7 @@ class LocalDataSourceImpl(
 }
 
 // core/data/src/main/java/com/myapp/core/data/di/DataModule.kt
-package com.myapp.core.data .di
 
-import android.content.Context
-import com.myapp.core.data.repository.*
-import org.koin.android.ext.koin.androidContext
-import org.koin.dsl.module
 
 val dataModule = module {
     single {
@@ -413,10 +291,7 @@ val dataModule = module {
 // ===========================================
 
 // core/domain/src/main/java/com/myapp/core/domain/usecase/LoginUseCase.kt
-package com.myapp.core.domain.usecase
 
-import com.myapp.core.data.repository.UserRepository
-import com.myapp.core.network.UserData
 
 class LoginUseCase(private val userRepository: UserRepository) {
     suspend operator fun invoke(email: String, password: String): Result<UserData> {
@@ -433,10 +308,6 @@ class LoginUseCase(private val userRepository: UserRepository) {
 }
 
 // core/domain/src/main/java/com/myapp/core/domain/usecase/GetUserDataUseCase.kt
-package com.myapp.core.domain.usecase
-
-import com.myapp.core.data.repository.UserRepository
-import com.myapp.core.network.UserData
 
 class GetUserDataUseCase(private val userRepository: UserRepository) {
     suspend operator fun invoke(): Result<UserData> {
@@ -445,10 +316,7 @@ class GetUserDataUseCase(private val userRepository: UserRepository) {
 }
 
 // core/domain/src/main/java/com/myapp/core/domain/di/DomainModule.kt
-package com.myapp.core.domain.di
 
-import com.myapp.core.domain.usecase.*
-import org.koin.dsl.module
 
 val domainModule = module {
     factory { LoginUseCase(get()) }
@@ -460,15 +328,7 @@ val domainModule = module {
 // ===========================================
 
 // core/ui/src/main/java/com/myapp/core/ui/components/CommonButton.kt
-package com.myapp.core.ui.components
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 
 @Composable
 fun CommonButton(
@@ -489,15 +349,7 @@ fun CommonButton(
 }
 
 // core/ui/src/main/java/com/myapp/core/ui/components/CommonTextField.kt
-package com.myapp.core.ui.components
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 
 @Composable
 fun CommonTextField(
@@ -520,11 +372,6 @@ fun CommonTextField(
 }
 
 // core/ui/src/main/java/com/myapp/core/ui/theme/Theme.kt
-package com.myapp.core.ui.theme
-
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
 
 private val LightColorScheme = lightColorScheme()
 
@@ -541,14 +388,6 @@ fun MyAppTheme(content: @Composable () -> Unit) {
 // ===========================================
 
 // core/navigation/src/main/java/com/myapp/core/navigation/AppNavigation.kt
-package com.myapp.core.navigation
-
-import androidx.compose.runtime.Composable
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.myapp.features.home.presentation.HomeScreen
-import com.myapp.features.login.presentation.LoginScreen
 
 @Composable
 fun AppNavigation() {
@@ -581,7 +420,6 @@ fun AppNavigation() {
 }
 
 // core/navigation/src/main/java/com/myapp/core/navigation/Routes.kt
-package com.myapp.core.navigation
 
 object Routes {
     const val LOGIN = "login"
@@ -593,9 +431,7 @@ object Routes {
 // ===========================================
 
 // features/login/src/main/java/com/myapp/features/login/presentation/LoginStateUI.kt
-package com.myapp.features.login.presentation
 
-import com.myapp.core.network.UserData
 
 data class LoginStateUI(
     val email: String = "",
@@ -618,14 +454,7 @@ sealed class LoginEffect {
 }
 
 // features/login/src/main/java/com/myapp/features/login/presentation/LoginViewModel.kt
-package com.myapp.features.login.presentation
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.myapp.core.domain.usecase.LoginUseCase
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 
 class LoginViewModel(
     private val loginUseCase: LoginUseCase
@@ -684,17 +513,7 @@ class LoginViewModel(
 }
 
 // features/login/src/main/java/com/myapp/features/login/presentation/LoginScreen.kt
-package com.myapp.features.login.presentation
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import com.myapp.core.ui.components.CommonButton
-import com.myapp.core.ui.components.CommonTextField
-import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -762,11 +581,6 @@ fun LoginScreen(
 }
 
 // features/login/src/main/java/com/myapp/features/login/di/LoginModule.kt
-package com.myapp.features.login.di
-
-import com.myapp.features.login.presentation.LoginViewModel
-import org.koin.androidx.viewmodel.dsl.viewModel
-import org.koin.dsl.module
 
 val loginModule = module {
     viewModel { LoginViewModel(get()) }
@@ -777,9 +591,7 @@ val loginModule = module {
 // ===========================================
 
 // features/home/src/main/java/com/myapp/features/home/presentation/HomeStateUI.kt
-package com.myapp.features.home.presentation
 
-import com.myapp.core.network.UserData
 
 data class HomeStateUI(
     val user: UserData? = null,
@@ -799,14 +611,7 @@ sealed class HomeEffect {
 }
 
 // features/home/src/main/java/com/myapp/features/home/presentation/HomeViewModel.kt
-package com.myapp.features.home.presentation
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.myapp.core.domain.usecase.GetUserDataUseCase
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 
 class HomeViewModel(
     private val getUserDataUseCase: GetUserDataUseCase
@@ -869,16 +674,7 @@ class HomeViewModel(
 }
 
 // features/home/src/main/java/com/myapp/features/home/presentation/HomeScreen.kt
-package com.myapp.features.home.presentation
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import com.myapp.core.ui.components.CommonButton
-import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun HomeScreen(
@@ -953,11 +749,7 @@ fun HomeScreen(
 }
 
 // features/home/src/main/java/com/myapp/features/home/di/HomeModule.kt
-package com.myapp.features.home.di
 
-import com.myapp.features.home.presentation.HomeViewModel
-import org.koin.androidx.viewmodel.dsl.viewModel
-import org.koin.dsl.module
 
 val homeModule = module {
     viewModel { HomeViewModel(get()) }
@@ -1015,213 +807,18 @@ include ':features:home'
 // 14. BUILD.GRADLE DOS MÓDULOS CORE
 // ===========================================
 
-// core/data/build.gradle
-plugins {
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-}
-
-android {
-    compileSdk 34
-    defaultConfig {
-        minSdk 24
-        targetSdk 34
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion . VERSION_1_8
-                targetCompatibility JavaVersion . VERSION_1_8
-    }
-}
-
-dependencies {
-    implementation project (':core:network')
-    implementation "io.insert-koin:koin-android:$koin_version"
-    implementation "androidx.core:core-ktx:1.10.1"
-}
-
-// core/domain/build.gradle
-plugins {
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-}
-
-android {
-    compileSdk 34
-    defaultConfig {
-        minSdk 24
-        targetSdk 34
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion . VERSION_1_8
-                targetCompatibility JavaVersion . VERSION_1_8
-    }
-}
-
-dependencies {
-    implementation project (':core:data')
-    implementation project (':core:network')
-    implementation "io.insert-koin:koin-android:$koin_version"
-    implementation "androidx.core:core-ktx:1.10.1"
-}
-
-// core/ui/build.gradle
-plugins {
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-}
-
-android {
-    compileSdk 34
-    defaultConfig {
-        minSdk 24
-        targetSdk 34
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion . VERSION_1_8
-                targetCompatibility JavaVersion . VERSION_1_8
-    }
-    buildFeatures {
-        compose true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion compose_version
-    }
-}
-
-dependencies {
-    implementation "androidx.compose.ui:ui:$compose_version"
-    implementation "androidx.compose.ui:ui-tooling-preview:$compose_version"
-    implementation "androidx.compose.material3:material3:1.1.0"
-    implementation "androidx.core:core-ktx:1.10.1"
-}
-
-// core/navigation/build.gradle
-plugins {
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-}
-
-android {
-    compileSdk 34
-    defaultConfig {
-        minSdk 24
-        targetSdk 34
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion . VERSION_1_8
-                targetCompatibility JavaVersion . VERSION_1_8
-    }
-    buildFeatures {
-        compose true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion compose_version
-    }
-}
-
-dependencies {
-    implementation project (':features:login')
-    implementation project (':features:home')
-    implementation "androidx.navigation:navigation-compose:2.6.0"
-    implementation "androidx.compose.ui:ui:$compose_version"
-    implementation "androidx.core:core-ktx:1.10.1"
-}
-
 // ===========================================
 // 15. BUILD.GRADLE DOS MÓDULOS FEATURES
 // ===========================================
 
-// features/login/build.gradle
-plugins {
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-}
 
-android {
-    compileSdk 34
-    defaultConfig {
-        minSdk 24
-        targetSdk 34
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion . VERSION_1_8
-                targetCompatibility JavaVersion . VERSION_1_8
-    }
-    buildFeatures {
-        compose true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion compose_version
-    }
-}
-
-dependencies {
-    implementation project (':core:ui')
-    implementation project (':core:domain')
-    implementation project (':core:network')
-
-    implementation "androidx.compose.ui:ui:$compose_version"
-    implementation "androidx.compose.ui:ui-tooling-preview:$compose_version"
-    implementation "androidx.compose.material3:material3:1.1.0"
-    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1"
-    implementation "io.insert-koin:koin-android:$koin_version"
-    implementation "io.insert-koin:koin-androidx-compose:$koin_version"
-    implementation "androidx.core:core-ktx:1.10.1"
-}
-
-// features/home/build.gradle
-plugins {
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-}
-
-android {
-    compileSdk 34
-    defaultConfig {
-        minSdk 24
-        targetSdk 34
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion . VERSION_1_8
-                targetCompatibility JavaVersion . VERSION_1_8
-    }
-    buildFeatures {
-        compose true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion compose_version
-    }
-}
-
-dependencies {
-    implementation project (':core:ui')
-    implementation project (':core:domain')
-    implementation project (':core:network')
-
-    implementation "androidx.compose.ui:ui:$compose_version"
-    implementation "androidx.compose.ui:ui-tooling-preview:$compose_version"
-    implementation "androidx.compose.material3:material3:1.1.0"
-    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1"
-    implementation "io.insert-koin:koin-android:$koin_version"
-    implementation "io.insert-koin:koin-androidx-compose:$koin_version"
-    implementation "androidx.core:core-ktx:1.10.1"
-}
 
 // ===========================================
 // 16. COMPONENTES ADICIONAIS DE UI
 // ===========================================
 
 // core/ui/src/main/java/com/myapp/core/ui/components/LoadingIndicator.kt
-package com.myapp.core.ui.components
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 
 @Composable
 fun LoadingIndicator(
@@ -1243,14 +840,7 @@ fun LoadingIndicator(
 }
 
 // core/ui/src/main/java/com/myapp/core/ui/components/ErrorMessage.kt
-package com.myapp.core.ui.components
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 
 @Composable
 fun ErrorMessage(
@@ -1294,7 +884,7 @@ fun ErrorMessage(
 // ===========================================
 
 // core/network/src/main/java/com/myapp/core/network/NetworkResult.kt
-package com.myapp.core.network
+
 
 sealed class NetworkResult<T> {
     data class Success<T>(val data: T) : NetworkResult<T>()
@@ -1303,10 +893,7 @@ sealed class NetworkResult<T> {
 }
 
 // core/network/src/main/java/com/myapp/core/network/ApiClient.kt
-package com.myapp.core.network
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 abstract class ApiClient {
     protected suspend fun <T> safeApiCall(
@@ -1323,7 +910,6 @@ abstract class ApiClient {
 }
 
 // core/network/src/main/java/com/myapp/core/network/RetrofitApiClient.kt
-package com.myapp.core.network
 
 class RetrofitApiClient(
     private val retrofitApiService: RetrofitApiService
@@ -1355,12 +941,7 @@ class RetrofitApiClient(
 // ===========================================
 
 // core/data/src/main/java/com/myapp/core/data/repository/UserRepositoryImpl.kt
-package com.myapp.core.data .repository
 
-import com.myapp.core.network.ApiService
-import com.myapp.core.network.UserData
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 class UserRepositoryImpl(
     private val apiService: ApiService,
@@ -1412,9 +993,7 @@ class UserRepositoryImpl(
 // ===========================================
 
 // core/domain/src/main/java/com/myapp/core/domain/usecase/LogoutUseCase.kt
-package com.myapp.core.domain.usecase
 
-import com.myapp.core.data.repository.UserRepository
 
 class LogoutUseCase(private val userRepository: UserRepository) {
     suspend operator fun invoke(): Result<Unit> {
@@ -1428,9 +1007,7 @@ class LogoutUseCase(private val userRepository: UserRepository) {
 }
 
 // core/domain/src/main/java/com/myapp/core/domain/usecase/CheckAuthUseCase.kt
-package com.myapp.core.domain.usecase
 
-import com.myapp.core.data.repository.UserRepository
 
 class CheckAuthUseCase(private val userRepository: UserRepository) {
     suspend operator fun invoke(): Boolean {
@@ -1443,20 +1020,7 @@ class CheckAuthUseCase(private val userRepository: UserRepository) {
 // ===========================================
 
 // core/network/src/main/java/com/myapp/core/network/di/NetworkModule.kt
-package com.myapp.core.network.di
 
-import com.myapp.core.network.*
-import io.ktor.client.*
-import io.ktor.client.engine.android.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.serialization.kotlinx.json.*
-import kotlinx.serialization.json.Json
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
-import org.koin.dsl.module
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import java.util.concurrent.TimeUnit
 
 val networkModule = module {
 
@@ -1501,10 +1065,7 @@ val networkModule = module {
 }
 
 // core/domain/src/main/java/com/myapp/core/domain/di/DomainModule.kt
-package com.myapp.core.domain.di
 
-import com.myapp.core.domain.usecase.*
-import org.koin.dsl.module
 
 val domainModule = module {
     factory { LoginUseCase(get()) }
@@ -1518,15 +1079,7 @@ val domainModule = module {
 // ===========================================
 
 // features/home/src/main/java/com/myapp/features/home/presentation/HomeViewModel.kt
-package com.myapp.features.home.presentation
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.myapp.core.domain.usecase.GetUserDataUseCase
-import com.myapp.core.domain.usecase.LogoutUseCase
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 
 class HomeViewModel(
     private val getUserDataUseCase: GetUserDataUseCase,
@@ -1605,11 +1158,7 @@ class HomeViewModel(
 }
 
 // features/home/src/main/java/com/myapp/features/home/di/HomeModule.kt
-package com.myapp.features.home.di
 
-import com.myapp.features.home.presentation.HomeViewModel
-import org.koin.androidx.viewmodel.dsl.viewModel
-import org.koin.dsl.module
 
 val homeModule = module {
     viewModel { HomeViewModel(get(), get()) }
